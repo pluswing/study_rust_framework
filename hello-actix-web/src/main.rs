@@ -1,5 +1,5 @@
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, Result};
-use serde::Deserialize;
+use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, Result, body::BoxBody, http::header::ContentType, error};
+use serde::{Deserialize, Serialize};
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -14,11 +14,11 @@ async fn echo(req_body: String) -> impl Responder {
 async fn manual_hello() -> impl Responder {
   HttpResponse::Ok().body("Hey there!")
 }
-/*
+
 #[get("/users/{user_id}/{friend}")]
 async fn friend(path: web::Path<(u32, String)>) -> Result<String> {
   let (user_id, friend) = path.into_inner();
-  Ok(format!("Wrlcome {}, user_id {}", friend, user_id));
+  Ok(format!("Wrlcome {}, user_id {}", friend, user_id))
 }
 
 #[derive(Deserialize)]
@@ -29,7 +29,7 @@ struct Info {
 
 #[get("/users2/{user_id}/{friend}")]
 async fn friend2(info: web::Path<Info>) -> Result<String> {
-  Ok(format!("Wrlcome {}, user_id {}", info.friend, info.user_id));
+  Ok(format!("Wrlcome {}, user_id {}", info.friend, info.user_id))
 }
 
 #[derive(Deserialize)]
@@ -59,10 +59,11 @@ struct FormData {
 }
 
 #[post("/form")]
-async fn index(form: web::Form<FormData>) -> Result<String> {
+async fn form(form: web::Form<FormData>) -> Result<String> {
     Ok(format!("Welcome {}!", form.username))
 }
 
+#[derive(Serialize)]
 struct MyObj {
   name: &'static str,
 }
@@ -81,21 +82,27 @@ impl Responder for MyObj {
 async fn json_resp() -> impl Responder {
   MyObj { name: "user" }
 }
-*/
+
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {
   HttpServer::new(|| {
-    // let json_config = web::JSonConfig::default()
-    //   .limit(4096)
-    //   .error_handle(|err, _req| {
-    //     error::InternalError::from_response(err, HttpResponse::Conflict().finish()).into()
-    //   });
+    let json_config = web::JsonConfig::default()
+      .limit(4096)
+      .error_handler(|err, _req| {
+        error::InternalError::from_response(err, HttpResponse::Conflict().finish()).into()
+      });
     App::new()
-      // .app_data(json_config)
+      .app_data(json_config)
       .service(hello)
       .service(echo)
       .route("/hey", web::get().to(manual_hello))
+      .service(friend)
+      .service(friend2)
+      .service(query)
+      .service(submit)
+      .service(form)
+      .route("/json_resp", web::get().to(json_resp))
   }).bind(("127.0.0.1", 8080))?
   .run()
   .await
