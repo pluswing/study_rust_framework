@@ -52,7 +52,7 @@ async fn submit(info: web::Json<Info3>) -> Result<String> {
     Ok(format!("Welcome {}!", info.username))
 }
 
-// content-type multipart/form-data
+// content-type application/x-www-form-urlencoded
 #[derive(Deserialize)]
 struct FormData {
     username: String,
@@ -65,22 +65,12 @@ async fn form(form: web::Form<FormData>) -> Result<String> {
 
 #[derive(Serialize)]
 struct MyObj {
-  name: &'static str,
+  name: String,
 }
 
-impl Responder for MyObj {
-  type Body = BoxBody;
-
-  fn respond_to(self, req: &actix_web::HttpRequest) -> HttpResponse<Self::Body> {
-      let body = serde_json::to_string(&self).unwrap();
-      HttpResponse::Ok()
-        .content_type(ContentType::json())
-        .body(body)
-  }
-}
-
-async fn json_resp() -> impl Responder {
-  MyObj { name: "user" }
+async fn json_resp() -> Result<impl Responder> {
+  let obj: MyObj = MyObj { name: "user".to_string() };
+  Ok(web::Json(obj))
 }
 
 
@@ -103,7 +93,7 @@ async fn main() -> std::io::Result<()> {
       .service(submit)
       .service(form)
       .route("/json_resp", web::get().to(json_resp))
-  }).bind(("127.0.0.1", 8080))?
+  }).bind(("0.0.0.0", 8080))?
   .run()
   .await
 }
