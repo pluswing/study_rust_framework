@@ -1,5 +1,12 @@
+use std::env;
+
 use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, Result, body::BoxBody, http::header::ContentType, error};
+use diesel::mysql::MysqlConnection;
+use diesel::prelude::*;
+use dotenvy::dotenv;
 use serde::{Deserialize, Serialize};
+
+mod schema;
 
 #[get("/")]
 async fn hello() -> impl Responder {
@@ -73,6 +80,20 @@ async fn json_resp() -> Result<impl Responder> {
   Ok(web::Json(obj))
 }
 
+pub fn establish_connection() -> MysqlConnection {
+  dotenv().ok();
+
+  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+  MysqlConnection::establish(&database_url)
+      .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+}
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = self::schema::users)]
+struct NewUser<'a> {
+  id: &'a u32,
+  name: &'a str,
+}
 
 #[actix_web::main]
 async fn main() -> std::io::Result<()> {

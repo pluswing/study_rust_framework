@@ -6,7 +6,7 @@ services:
     ports:
       - 8080:8080
     working_dir: /api
-    command: "cargo run" # watchにしたい。
+    command: "cargo watch -x run"
 
   db:
     image: mysql:8.2.0

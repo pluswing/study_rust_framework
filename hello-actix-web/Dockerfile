@@ -2,8 +2,12 @@ FROM rust:1.73-bookworm
 
 WORKDIR /api
 
+RUN apt update && \
+  apt install -y default-libmysqlclient-dev
+
 COPY ./ /api
 RUN cargo install --path .
+
 
 EXPOSE 8080
 
