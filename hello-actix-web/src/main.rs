@@ -8,6 +8,50 @@ use serde::{Deserialize, Serialize};
 
 mod schema;
 
+// type SqlConnection = MysqlConnection;
+// type DbPool = r2d2::Pool<r2d2::ConnectionManager<SqlConnection>>;
+
+pub fn establish_connection() -> MysqlConnection {
+  dotenv().ok();
+
+  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
+  MysqlConnection::establish(&database_url)
+      .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+}
+
+
+
+#[derive(Debug, Insertable)]
+#[diesel(table_name = self::schema::users)]
+struct NewUser<'a> {
+  id: &'a u64,
+  name: &'a str,
+}
+
+fn insert_new_user(
+  conn: &mut MysqlConnection,
+  user_name: String,
+) -> diesel::QueryResult<NewUser> {
+  use self::schema::users::dsl::*;
+
+  let new_user = NewUser {
+    id: &1,
+    name: &user_name,
+  };
+
+  diesel::insert_into(users)
+    .values(&new_user)
+    .execute(conn)
+    .expect("Error inserting person");
+
+  let user = users
+    // .filter(id.eq(&uid))
+    .first::<NewUser>(conn)
+    .expect("Error loading person");
+
+  Ok(user)
+}
+
 #[get("/")]
 async fn hello() -> impl Responder {
   HttpResponse::Ok().body("Hello World!")
@@ -56,6 +100,14 @@ struct Info3 {
 
 #[post("/submit")]
 async fn submit(info: web::Json<Info3>) -> Result<String> {
+    let username = info.username.clone();
+    let user = web::block(move || {
+      let mut conn: MysqlConnection = establish_connection();
+      insert_new_user(&mut conn, username);
+    })
+    .await?
+    .map_err(error::ErrorInternalServerError);
+
     Ok(format!("Welcome {}!", info.username))
 }
 
@@ -78,21 +130,6 @@ struct MyObj {
 async fn json_resp() -> Result<impl Responder> {
   let obj: MyObj = MyObj { name: "user".to_string() };
   Ok(web::Json(obj))
-}
-
-pub fn establish_connection() -> MysqlConnection {
-  dotenv().ok();
-
-  let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  MysqlConnection::establish(&database_url)
-      .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
-}
-
-#[derive(Debug, Insertable)]
-#[diesel(table_name = self::schema::users)]
-struct NewUser<'a> {
-  id: &'a u32,
-  name: &'a str,
 }
 
 #[actix_web::main]
