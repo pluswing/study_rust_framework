@@ -1,42 +1,45 @@
 use std::env;
 
-use actix_web::{get, post, web, App, HttpResponse, HttpServer, Responder, Result, body::BoxBody, http::header::ContentType, error};
+use actix_web::{get, post, web::{self, Data}, App, HttpResponse, HttpServer, Responder, Result, body::BoxBody, http::header::ContentType, error};
 use diesel::mysql::MysqlConnection;
+use diesel::r2d2::ConnectionManager;
 use diesel::prelude::*;
 use dotenvy::dotenv;
 use serde::{Deserialize, Serialize};
 
 mod schema;
 
-// type SqlConnection = MysqlConnection;
-// type DbPool = r2d2::Pool<r2d2::ConnectionManager<SqlConnection>>;
+type SqlConnection = MysqlConnection;
+type DbPool = r2d2::Pool<ConnectionManager<SqlConnection>>;
 
-pub fn establish_connection() -> MysqlConnection {
+pub fn establish_connection() -> DbPool {
   dotenv().ok();
 
   let database_url = env::var("DATABASE_URL").expect("DATABASE_URL must be set");
-  MysqlConnection::establish(&database_url)
-      .unwrap_or_else(|_| panic!("Error connecting to {}", database_url))
+  let manager = ConnectionManager::<SqlConnection>::new(database_url);
+    let pool: DbPool = r2d2::Pool::builder()
+        .build(manager)
+        .expect("Failed to create pool.");
+  pool
 }
 
 
-
-#[derive(Debug, Insertable)]
+#[derive(Debug, Insertable, Queryable)]
 #[diesel(table_name = self::schema::users)]
-struct NewUser<'a> {
-  id: &'a u64,
-  name: &'a str,
+struct NewUser {
+  id: u64,
+  name: String,
 }
 
 fn insert_new_user(
-  conn: &mut MysqlConnection,
+  conn: &mut SqlConnection,
   user_name: String,
 ) -> diesel::QueryResult<NewUser> {
   use self::schema::users::dsl::*;
 
   let new_user = NewUser {
-    id: &1,
-    name: &user_name,
+    id: 1,
+    name: user_name,
   };
 
   diesel::insert_into(users)
@@ -45,7 +48,7 @@ fn insert_new_user(
     .expect("Error inserting person");
 
   let user = users
-    // .filter(id.eq(&uid))
+    .filter(id.eq(1))
     .first::<NewUser>(conn)
     .expect("Error loading person");
 
@@ -99,16 +102,14 @@ struct Info3 {
 }
 
 #[post("/submit")]
-async fn submit(info: web::Json<Info3>) -> Result<String> {
-    let username = info.username.clone();
+async fn submit(pool: web::Data<DbPool>, info: web::Json<Info3>) -> Result<String> {
     let user = web::block(move || {
-      let mut conn: MysqlConnection = establish_connection();
-      insert_new_user(&mut conn, username);
+      let mut conn = pool.get().unwrap();
+      insert_new_user(&mut conn, info.username.clone())
     })
-    .await?
-    .map_err(error::ErrorInternalServerError);
+    .await.unwrap();
 
-    Ok(format!("Welcome {}!", info.username))
+    Ok(format!("Welcome {:?}!", user.unwrap()))
 }
 
 // content-type application/x-www-form-urlencoded
@@ -140,8 +141,10 @@ async fn main() -> std::io::Result<()> {
       .error_handler(|err, _req| {
         error::InternalError::from_response(err, HttpResponse::Conflict().finish()).into()
       });
+    let pool = establish_connection();
     App::new()
       .app_data(json_config)
+      .app_data(Data::new(pool.clone()))
       .service(hello)
       .service(echo)
       .route("/hey", web::get().to(manual_hello))
