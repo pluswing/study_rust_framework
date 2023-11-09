@@ -31,7 +31,7 @@ struct Task {
 #[post("/todo", data = "<task>")]
 fn todo(task: Json<Task>) -> Json<Task> {
   Json(Task { description: "aaaa".to_string(), complete: true })
- }
+}
 
 #[launch]
 fn rocket() -> _ {
